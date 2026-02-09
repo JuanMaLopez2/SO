@@ -1,0 +1,22 @@
+# Configuración básica de Doxygen para EAFITos
+
+PROJECT_NAME           = "EAFITos"
+PROJECT_NUMBER         = "1.0"
+PROJECT_BRIEF          = "Sistema Operativo Educativo y Shell"
+
+OUTPUT_DIRECTORY       = docs
+INPUT                  = src include
+RECURSIVE              = YES
+
+OPTIMIZE_OUTPUT_FOR_C  = YES
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+
+GENERATE_LATEX         = NO
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+
+# Visual styling
+HAVE_DOT               = NO
+# Set to YES if graphviz is installed for graphs
