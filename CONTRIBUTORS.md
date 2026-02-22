@@ -3,10 +3,11 @@
 Este archivo tiene como objetivo reconocer a todas las personas que han contribuido al desarrollo de **EAFITos**.
 
 ## Mantenedores Principales
-* **Desarrollador Principal**: [Tu Nombre / Usuario] - Arquitectura del núcleo y shell básica.
+* **Desarrollador Principal**: Juan Manuel López Sánchez/JuanMaLopez2 - Arquitectura del núcleo y shell básica.
 
 ## Colaboradores
-* *Aún no hay colaboradores externos.*
+* **Colaborador**: Juan Gómez - Comandos de archivos, documentacion
+* **Colaborador**: Adyuer Ojeda - Comandos de archivos, documentacion
 
 ## Cómo contribuir
 Si deseas aparecer en esta lista:
@@ -19,6 +20,6 @@ Si deseas aparecer en esta lista:
 |------------|--------|-------|--------------------------------------------------|----------|
 | Juan Lopez | 1001   | Líder | Shell loop, parser, comandos basicos y avanzados | 50%      |
 | Juan Gomez | 1002   | Dev   | Comandos de archivos, documentacion              | 25%      |
-| Adyuer     | 1003   | Dev   | Comandos de sistema, manejador de errores        | 25%      |
+| Adyuer Ojeda| 1003   | Dev   | Comandos de sistema, manejador de errores        | 25%      |
 
 Total: 100%
