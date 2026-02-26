@@ -1,244 +1,260 @@
 /**
  * @file advanced_commands.c
- * @brief Implementación de comandos avanzados
- * 
- * Incluye: historial, limpiar, buscar y estadisticas
+ * @brief Implementación de comandos avanzados: historial, limpiar, buscar, estadisticas
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <ctype.h>
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include <dirent.h>
+
 #include "commands.h"
 #include "shell.h"
 
+enum { LINE_BUF = 1024 };
+
+static const char *CLR_RESET = "\033[0m";
+static const char *CLR_YELLOW = "\033[1;33m";
+static const char *CLR_GREEN = "\033[1;32m";
+static const char *CLR_RED = "\033[1;31m";
+static const char *CLR_CYAN = "\033[1;36m";
+
+static void usage_buscar(void) {
+  puts("Uso: buscar <texto> <archivo>");
+  puts("Ejemplo: buscar main main.c");
+  puts("Ejemplo: buscar \"main\" main.c");
+}
+
+static void usage_estadisticas(void) {
+  puts("Uso: estadisticas <archivo>");
+  puts("Ejemplo: estadisticas README.md");
+}
+
+static char *strip_quotes(char *s) {
+  if (!s) return s;
+  size_t n = strlen(s);
+  if (n >= 2) {
+    char a = s[0];
+    char b = s[n - 1];
+    if ((a == '"' && b == '"') || (a == '\'' && b == '\'')) {
+      s[n - 1] = '\0';
+      return s + 1;
+    }
+  }
+  return s;
+}
+
+static void perm_to_rwx(mode_t mode, char out[10]) {
+  const mode_t bits[9] = {S_IRUSR, S_IWUSR, S_IXUSR, S_IRGRP, S_IWGRP,
+                          S_IXGRP, S_IROTH, S_IWOTH, S_IXOTH};
+  const char chars[3] = {'r', 'w', 'x'};
+
+  for (int i = 0; i < 9; ++i) out[i] = (mode & bits[i]) ? chars[i % 3] : '-';
+  out[9] = '\0';
+}
+
+static void fmt_time(time_t t, char *buf, size_t cap) {
+  struct tm tm_info;
+#if defined(_POSIX_THREAD_SAFE_FUNCTIONS)
+  localtime_r(&t, &tm_info);
+  strftime(buf, cap, "%d/%m/%Y %H:%M:%S", &tm_info);
+#else
+  struct tm *p = localtime(&t);
+  if (!p) {
+    snprintf(buf, cap, "N/A");
+    return;
+  }
+  strftime(buf, cap, "%d/%m/%Y %H:%M:%S", p);
+#endif
+}
+
+static void print_human_size(off_t bytes) {
+  if (bytes >= (off_t)1024 * 1024) {
+    printf("%lld bytes (%.2f MB)\n", (long long)bytes,
+           (double)bytes / (1024.0 * 1024.0));
+  } else if (bytes >= (off_t)1024) {
+    printf("%lld bytes (%.2f KB)\n", (long long)bytes, (double)bytes / 1024.0);
+  } else {
+    printf("%lld bytes\n", (long long)bytes);
+  }
+}
+
+static void print_open_error(const char *filename) {
+  fprintf(stderr, "Error: No se pudo abrir '%s' (%s)\n", filename,
+          strerror(errno));
+}
+
 // ============================================
-// COMANDO 1: HISTORIAL
+// COMANDO: HISTORIAL
 // ============================================
 
-/**
- * @brief Muestra los últimos comandos ejecutados
- * @param args Argumentos (no utilizados)
- * 
- * Recupera el historial almacenado en las variables globales
- * definidas en history_manager.c
- */
 void cmd_historial(char **args) {
-    (void)args;  // Silenciar warning
-    
-    printf("\n=== HISTORIAL DE COMANDOS (últimos %d) ===\n", history_count);
-    
-    if (history_count == 0) {
-        printf("  El historial está vacío.\n");
-        printf("  Ejecuta algunos comandos para verlos aquí.\n\n");
-        return;
-    }
-    
-    for (int i = 0; i < history_count; i++) {
-        printf("  %2d: %s\n", i + 1, history[i]);
-    }
-    printf("\n");
+  (void)args;
+
+  printf("\n=== HISTORIAL DE COMANDOS (últimos %d) ===\n", history_count);
+  if (history_count <= 0) {
+    puts("  El historial está vacío.\n");
+    return;
+  }
+
+  for (int i = 0; i < history_count; ++i) {
+    printf("  %2d: %s\n", i + 1, history[i]);
+  }
+  putchar('\n');
 }
 
 // ============================================
-// COMANDO 2: LIMPIAR
+// COMANDO: LIMPIAR
 // ============================================
 
-/**
- * @brief Limpia la pantalla de la terminal
- * @param args Argumentos (no utilizados)
- * 
- * Usa secuencias ANSI para portabilidad entre sistemas.
- */
 void cmd_limpiar(char **args) {
-    (void)args;
-    
-    // Secuencias ANSI (funciona en Linux/macOS/terminales modernos)
-    printf("\033[2J");  // Limpiar toda la pantalla
-    printf("\033[H");   // Mover cursor a inicio (1,1)
-    
-    // Banner personalizado
-    printf("╔══════════════════════════════════════╗\n");
-    printf("║           EAFITos v1.0               ║\n");
-    printf("║       Shell Educativa - SO           ║\n");
-    printf("╚══════════════════════════════════════╝\n");
-    printf("Escribe 'ayuda' para ver los comandos.\n\n");
+  (void)args;
+
+  // ANSI: limpia pantalla y mueve cursor al inicio
+  fputs("\033[2J\033[H", stdout);
+
+  fputs("╔══════════════════════════════════════╗\n"
+        "║           EAFITos v1.0               ║\n"
+        "║       Shell Educativa - SO           ║\n"
+        "╚══════════════════════════════════════╝\n"
+        "Escribe 'ayuda' para ver los comandos.\n\n",
+        stdout);
 }
 
 // ============================================
-// COMANDO 3: BUSCAR
+// COMANDO: BUSCAR
 // ============================================
 
-/**
- * @brief Busca un texto dentro de un archivo
- * @param args args[1] = texto a buscar, args[2] = nombre del archivo
- * 
- * Implementa una versión simplificada de grep.
- * Muestra línea número y contenido donde aparece el texto.
- */
 void cmd_buscar(char **args) {
-    // Validación de argumentos
-    if (args[1] == NULL || args[2] == NULL) {
-        printf("Uso: buscar <texto> <archivo>\n");
-        printf("Ejemplo: buscar \"función\" main.c\n");
-        printf("Ejemplo: buscar hola documento.txt\n");
-        return;
+  if (!args || !args[1] || !args[2]) {
+    usage_buscar();
+    return;
+  }
+
+  char *search_text = strip_quotes(args[1]);
+  const char *filename = args[2];
+
+  FILE *file = fopen(filename, "r");
+  if (!file) {
+    print_open_error(filename);
+    return;
+  }
+
+  char line[LINE_BUF];
+  int line_num = 1;
+  int matches = 0;
+
+  printf("\nBuscando '%s' en %s:\n", search_text, filename);
+  puts("────────────────────────────────────");
+
+  while (fgets(line, sizeof(line), file)) {
+    // Quitar salto final para imprimir bonito
+    line[strcspn(line, "\n")] = '\0';
+
+    if (strstr(line, search_text)) {
+      printf("%s%4d:%s %s\n", CLR_YELLOW, line_num, CLR_RESET, line);
+      ++matches;
     }
-    
-    const char *search_text = args[1];
-    const char *filename = args[2];
-    
-    // Abrir archivo
-    FILE *file = fopen(filename, "r");
-    if (file == NULL) {
-        printf("Error: No se pudo abrir '%s'\n", filename);
-        printf("       Verifica que el archivo exista y tengas permisos.\n");
-        return;
-    }
-    
-    char line[1024];
-    int line_num = 1;
-    int matches = 0;
-    
-    printf("\n🔍 Buscando '%s' en %s:\n", search_text, filename);
-    printf("────────────────────────────────────\n");
-    
-    // Leer línea por línea
-    while (fgets(line, sizeof(line), file)) {
-        // Eliminar salto de línea para mejor presentación
-        line[strcspn(line, "\n")] = '\0';
-        
-        // Buscar el texto (case-sensitive)
-        if (strstr(line, search_text) != NULL) {
-            // Resaltar en amarillo el número de línea
-            printf("\033[1;33m%4d:\033[0m %s\n", line_num, line);
-            matches++;
-        }
-        line_num++;
-    }
-    
-    fclose(file);
-    
-    // Resultado final con color
-    if (matches == 0) {
-        printf("\033[1;31m✗ Texto '%s' no encontrado.\033[0m\n", search_text);
-    } else {
-        printf("\033[1;32m✓ Encontrado %d ocurrencia(s).\033[0m\n", matches);
-    }
-    printf("\n");
+    ++line_num;
+  }
+
+  fclose(file);
+
+  if (matches == 0) {
+    printf("%s✗ Texto '%s' no encontrado.%s\n\n", CLR_RED, search_text,
+           CLR_RESET);
+  } else {
+    printf("%s✓ Encontrado %d ocurrencia(s).%s\n\n", CLR_GREEN, matches,
+           CLR_RESET);
+  }
 }
 
 // ============================================
-// COMANDO 4: ESTADISTICAS
+// COMANDO: ESTADISTICAS
 // ============================================
 
-/**
- * @brief Muestra estadísticas detalladas de un archivo
- * @param args args[1] = nombre del archivo
- * 
- * Combina stat() con análisis de contenido para mostrar:
- * - Tamaño, líneas, palabras, caracteres
- * - Permisos en formato octal y rwx
- * - Fechas de modificación y acceso
- * - Tipo de archivo
- */
 void cmd_estadisticas(char **args) {
-    // Validación
-    if (args[1] == NULL) {
-        printf("Uso: estadisticas <archivo>\n");
-        printf("Ejemplo: estadisticas README.md\n");
-        return;
-    }
-    
-    const char *filename = args[1];
-    struct stat file_stat;
-    
-    // Obtener información del sistema de archivos
-    if (stat(filename, &file_stat) == -1) {
-        printf("Error: No se pudo acceder a '%s'\n", filename);
-        printf("       Verifica que el archivo exista.\n");
-        return;
-    }
-    
-    printf("\n📊 \033[1;36m=== ESTADÍSTICAS DE: %s ===\033[0m\n", filename);
-    printf("────────────────────────────────────\n");
-    
-    // 1. TAMAÑO
-    printf("\033[1;33mTamaño:\033[0m        %ld bytes", file_stat.st_size);
-    if (file_stat.st_size > 1024) {
-        printf(" (%.2f KB)", file_stat.st_size / 1024.0);
-    }
-    if (file_stat.st_size > 1024 * 1024) {
-        printf(" (%.2f MB)", file_stat.st_size / (1024.0 * 1024.0));
-    }
-    printf("\n");
-    
-    // 2. ANÁLISIS DE CONTENIDO (líneas, palabras, caracteres)
-    FILE *file = fopen(filename, "r");
-    if (file) {
-        int lines = 0, words = 0, chars = 0;
-        int in_word = 0;
-        char c;
-        
-        while ((c = fgetc(file)) != EOF) {
-            chars++;
-            if (c == '\n') lines++;
-            
-            if (isspace(c)) {
-                in_word = 0;
-            } else if (!in_word) {
-                in_word = 1;
-                words++;
-            }
-        }
-        fclose(file);
-        
-        // Ajustar: última línea sin \n
-        if (chars > 0 && lines == 0) lines = 1;
-        
-        printf("\033[1;33mLíneas:\033[0m        %d\n", lines);
-        printf("\033[1;33mPalabras:\033[0m      %d\n", words);
-        printf("\033[1;33mCaracteres:\033[0m    %d\n", chars);
+  if (!args || !args[1]) {
+    usage_estadisticas();
+    return;
+  }
+
+  const char *filename = args[1];
+  struct stat st;
+
+  if (stat(filename, &st) == -1) {
+    fprintf(stderr, "Error: No se pudo acceder a '%s' (%s)\n", filename,
+            strerror(errno));
+    return;
+  }
+
+  printf("\n%s=== ESTADÍSTICAS DE: %s ===%s\n", CLR_CYAN, filename, CLR_RESET);
+  puts("────────────────────────────────────");
+
+  // 1) Tamaño
+  printf("%sTamaño:%s        ", CLR_YELLOW, CLR_RESET);
+  print_human_size(st.st_size);
+
+  // 2) Tipo
+  printf("%sTipo:%s          ", CLR_YELLOW, CLR_RESET);
+  if (S_ISREG(st.st_mode))
+    puts("Archivo regular");
+  else if (S_ISDIR(st.st_mode))
+    puts("Directorio");
+  else if (S_ISLNK(st.st_mode))
+    puts("Enlace simbólico");
+  else
+    puts("Otro");
+
+  // 3) Permisos
+  char rwx[10];
+  perm_to_rwx(st.st_mode, rwx);
+  printf("%sPermisos:%s      %o (%s)\n", CLR_YELLOW, CLR_RESET,
+         (unsigned)(st.st_mode & 0777), rwx);
+
+  // 4) Fechas
+  char tb[64];
+  fmt_time(st.st_mtime, tb, sizeof(tb));
+  printf("%sModificado:%s    %s\n", CLR_YELLOW, CLR_RESET, tb);
+
+  fmt_time(st.st_atime, tb, sizeof(tb));
+  printf("%sAccedido:%s      %s\n", CLR_YELLOW, CLR_RESET, tb);
+
+  // 5) Contenido (solo si es archivo regular y se puede leer)
+  if (S_ISREG(st.st_mode)) {
+    FILE *f = fopen(filename, "r");
+    if (!f) {
+      printf("⚠️  No se pudo leer el contenido para análisis (%s).\n",
+             strerror(errno));
     } else {
-        printf("⚠️  No se pudo leer el contenido para análisis.\n");
+      int lines = 0, words = 0;
+      long long chars = 0;
+      int in_word = 0;
+      int c = 0, last = 0;
+
+      while ((c = fgetc(f)) != EOF) {
+        ++chars;
+        if (c == '\n') ++lines;
+
+        if (isspace((unsigned char)c)) {
+          in_word = 0;
+        } else if (!in_word) {
+          in_word = 1;
+          ++words;
+        }
+        last = c;
+      }
+      fclose(f);
+
+      if (chars > 0 && last != '\n') ++lines; // cuenta última línea sin '\n'
+
+      printf("%sLíneas:%s        %d\n", CLR_YELLOW, CLR_RESET, lines);
+      printf("%sPalabras:%s      %d\n", CLR_YELLOW, CLR_RESET, words);
+      printf("%sCaracteres:%s    %lld\n", CLR_YELLOW, CLR_RESET, chars);
     }
-    
-    // 3. PERMISOS
-    printf("\033[1;33mPermisos:\033[0m      %o (", file_stat.st_mode & 0777);
-    
-    // Formato rwx (como ls -l)
-    printf("%c", (file_stat.st_mode & S_IRUSR) ? 'r' : '-');
-    printf("%c", (file_stat.st_mode & S_IWUSR) ? 'w' : '-');
-    printf("%c", (file_stat.st_mode & S_IXUSR) ? 'x' : '-');
-    printf("%c", (file_stat.st_mode & S_IRGRP) ? 'r' : '-');
-    printf("%c", (file_stat.st_mode & S_IWGRP) ? 'w' : '-');
-    printf("%c", (file_stat.st_mode & S_IXGRP) ? 'x' : '-');
-    printf("%c", (file_stat.st_mode & S_IROTH) ? 'r' : '-');
-    printf("%c", (file_stat.st_mode & S_IWOTH) ? 'w' : '-');
-    printf("%c", (file_stat.st_mode & S_IXOTH) ? 'x' : '-');
-    printf(")\n");
-    
-    // 4. FECHAS
-    char time_buffer[80];
-    struct tm *tm_info;
-    
-    tm_info = localtime(&file_stat.st_mtime);
-    strftime(time_buffer, sizeof(time_buffer), "%d/%m/%Y %H:%M:%S", tm_info);
-    printf("\033[1;33mModificado:\033[0m    %s\n", time_buffer);
-    
-    tm_info = localtime(&file_stat.st_atime);
-    strftime(time_buffer, sizeof(time_buffer), "%d/%m/%Y %H:%M:%S", tm_info);
-    printf("\033[1;33mAccedido:\033[0m      %s\n", time_buffer);
-    
-    // 5. TIPO DE ARCHIVO
-    printf("\033[1;33mTipo:\033[0m          ");
-    if (S_ISREG(file_stat.st_mode)) printf("Archivo regular\n");
-    else if (S_ISDIR(file_stat.st_mode)) printf("Directorio\n");
-    else if (S_ISLNK(file_stat.st_mode)) printf("Enlace simbólico\n");
-    else printf("Otro\n");
-    
-    printf("────────────────────────────────────\n\n");
+  }
+
+  puts("────────────────────────────────────\n");
 }
