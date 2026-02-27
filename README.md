@@ -35,7 +35,55 @@ Internamente en C, esto se maneja mediante un arreglo de cadenas (`char **args`)
 | `ayuda` | Ninguno | Muestra la lista de comandos disponibles. | `ayuda` |
 | `salir` | Ninguno | Termina la sesión de EAFITos. | `salir` |
 
-## 🛠️ Estructura del Proyecto
+## � Guía de Uso Rápida
+
+### Comandos Básicos
+
+**Ver archivos del directorio:**
+```bash
+eafitos> listar
+```
+
+**Leer un archivo:**
+```bash
+eafitos> leer README.md
+```
+
+**Ver la hora actual:**
+```bash
+eafitos> tiempo
+```
+
+**Realizar cálculos:**
+```bash
+eafitos> calc 10 + 5
+Resultado: 15
+
+eafitos> calc 20 * 3
+Resultado: 60
+
+eafitos> calc 100 / 4
+Resultado: 25
+```
+
+**Ver ayuda:**
+```bash
+eafitos> ayuda
+```
+
+**Salir:**
+```bash
+eafitos> salir
+```
+
+### Comandos Avanzados
+
+El sistema también soporta:
+- **Operaciones matemáticas complejas** con el comando `calc`
+- **Lectura de archivos de texto** con el comando `leer`
+- **Manejo de directorios** con el comando `listar`
+
+## �🛠️ Estructura del Proyecto
 - `/src`: Código fuente del proyecto (`main.c` contiene el loop principal).
 - `Makefile`: Script para automatizar la compilación.
 
@@ -66,4 +114,3 @@ Si tienes Doxygen instalado en tu sistema:
    doxygen Doxyfile
    ```
 3. Esto creará una carpeta `docs/html`. Abre el archivo `docs/html/index.html` en tu navegador para navegar por la documentación interactiva de funciones y estructuras.
-
